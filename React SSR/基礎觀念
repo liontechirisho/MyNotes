@@ -1,0 +1,191 @@
+# React SSR 基礎觀念
+
+### SSR = Server Side Rendering
+* Server Side Rendering：在伺服器端產出 HTML (後掛載到使用者的瀏覽器上。)  
+* Universal JavaScript 或 Isomorphic JavaScript 部分程式碼也會在瀏覽器上執行。強調的是在 client side 或 server side 應該有一致的撰寫風格。
+### 重要觀念
+* 使用者<u>第一次</u>進來該頁面時是透過 Renderer Server 處理（SSR）  
+後續操作的行為和頁面的切換，則都是透過載好在瀏覽器端的 React APP 來處理。  
+* 在 SSR 中，當使用者向伺服器發送請求時，Express 伺服器只會回傳 HTML 文檔，  
+沒有 JS 的程式碼會被傳送到瀏覽器端執行。
+### React SSR - 建議有兩個 Sever  
+* API Server：用來處理商業邏輯、登入驗證、顯示使用者清單，一般所謂的後端。  
+* Renderer Server：用來渲染應用程式並顯示給使用者，一般所謂的前端。  
+![](https://i.imgur.com/8enlRQ1.png)
+### render() v.s renderToString()
+* render()：將所有元件（component）建立實例，並掛載（mount）到 DOM 節點上。
+* renderToString()：一次渲染許多元件，並將 HTML 的結果以字串回傳。
+### 處理JSX
+* Client APP
+所有的元件都載入到 index.js 中，接著透過 Babel 會把 JSX 轉譯成ES5，最後打包成一支 bundle.js，給瀏覽器。  
+![](https://i.imgur.com/5RfiiXk.png)
+* Server Side
+透過 Webpack 和 Babel 把所有元件打包成 bundle.js 之後，給 Node 執行：
+![](https://i.imgur.com/p082AWF.png)
+
+### 自動重新打包and重啟伺服器 (when in 開發過程)
+* 使用 webpack --watch 的指令，讓 webpack 可以重新打包好一支新的檔案
+* 搭配 nodemon 來重新執行 node
+
+  // package.json
+
+  {
+    scripts: {
+      // 讓 nodemon 監控 './build' 資料夾內的檔案，
+      // 一旦檔案有變更後就執行 ./build/bundle.js 的檔案
+      'dev:server': 'nodemon --watch build --exec "node build/bundle.js"',
+
+      // 透過 --watch 指令來更新 webpack 打包好的檔案
+      'dev:build:server': 'webpack --config webpack.server.js --watch'
+    }
+  };  
+
+
+
+### 無法觸發綁定的事件  
+因為SSR 中，當使用者向伺服器發送請求時，Express 伺服器只會回傳 HTML 文檔，沒有 JS 的程式碼，   
+因此，必須要把和此 App 有關的 JavaScript 傳送到瀏覽器端。
+* 作法: 建立兩個打包好的不同檔案，其中一個是在後端執行；另一個則是會丟到瀏覽器去執行  
+* 這兩支 webpack 設定檔（webpack.server.js, webpack.client.js）  
+會有不同的entry point(index.server.js, index.client.js）：
+![](https://i.imgur.com/M6OCJpT.png)
+
+### SSR 流程
+
+* 伺服器將 React App 透過 ReactDOM.renderToString() 產生 HTML 樣版。
+* HTML 樣版丟到使用者的瀏覽器。
+* 瀏覽器渲染此 HTML 樣版，並下載給 client 使用的 bundle.js 檔。
+* 瀏覽器載入並執行 bundle.js 檔案。(hydration)
+* 在相同的 div 中，手動再次渲染 React App。
+* React 會在瀏覽器渲染 App，並比較新的 HTML 和原本的 HTML 樣版有何差異。
+* React 取代原本的伺服器所渲染的樣版，綁定相關的事件處理器。
+```
+hydration：將 JS 功能重新放回到已經被伺服器所渲染的 HTML 樣版上的這個過程，稱作 hydration。
+```
+
+### React router SSR
+
+##### 一般的伺服器上（非 SSR）
+React-Router（BrowserRouter）會這樣運作：
+![](https://i.imgur.com/lySCsnB.png)
+* 瀏覽器發送請求 '/users'
+* Express 伺服器不會在意請求的路由為何，透過 app.get(`*`) 全部收進來
+* Express 回傳 index.html
+* Express 回傳 bundle.js
+* bundle.js 檔案執行後，React 和 React Router 會啟動
+* React-Router 裡面的 BrowserRouter 元件，會去根據瀏覽器網址列來決定要顯示什麼內容
+
+BrowserRouter 元件是根據 **瀏覽器網址列** 來決定要顯示什麼內容，但  **在SSR 中並沒有瀏覽器網址列的存在**
+
+##### 在SSR上運作方式
+因為在SSR 中並沒有瀏覽器網址列的存在
+* 使用React-router另一個元件 StaticRouter
+* 初次渲染: 使用 StaticRouter
+* 非初次: （<u>hydrate</u>），則使用 BrowserRouter(同一般伺服器上的)。
+```
+hydration：將 JS 功能重新放回到已經被伺服器所渲染的 HTML 樣版上的這個過程，稱作 hydration。
+```
+![](https://i.imgur.com/PYJ1wFt.png)
+
+因此，架構改變成，先建立一支 ./src/client/Routes.js，  
+它會共享伺服器（./src/helpers/renderer.js）和瀏覽器（./src/client/index.client.js）要使用的程式碼：  
+
+![](https://i.imgur.com/h87k7wY.png)
+
+### React SSR with Redux
+因為伺服器和瀏覽器上的 Redux 設定必須不同：
+* 伺服器端只會吐回 HTML 樣版，不會觸發 componentDidMount 的生命週期，也沒有發送 API 的時間點，伺服器端也不知道何時初始化資料在 action creators 上載入完成
+* 需要在伺服器上驗證登入訊息
+* 需要將 state 在瀏覽器上進行 rehydration
+
+### 從 Sever Side Fetch 資料
+##### 用loadData來初始化渲染所需的資料
+在所有的元件上添加一些函式（即，loadData），用來描述這個元件在渲染時需要有哪些資料。   
+所以當瀏覽器發出請求時，我們會先檢查這個 URL 想要存取些什麼，接著檢視有哪些元件需要被渲染，  
+在那些需要被渲染的元件上，我們將呼叫在這些元件上所添加的 loadData 函式來初始化資料載入。  
+* 所有元件初始化要用的資料會先用loadData載入後再一起渲染
+##### 不能使用原本的routes 的設定方式，而是要使用 react-router packages 內的 react-router-config 這個套件  
+**react-router-config** :
+react-router-config提供的 **renderRoutes** 方法可以將 loadData 函式代到路由當中，如此便可以將該函式從前端傳送到後端。  
+接著其 **matchRoutes** 方法，則可以取得並呼叫 loadData 這個函式。(ME:有點像子層call父層的fn)
+**Process**
+1. 在 index.server.js(給server端的進入點) 去呼叫所有相關元件中的 loadData 方法，即 route.loadData(serverStore)。
+  1. 在各元件的 loadData 方法中，會手動去 dispatch 相對應的 action creators。
+  2. 由於使用了 redux-thunk 作為 middleware，當 dispatch 的 action 是函式（async function）而不是慣例的物件時，redux-thunk 會執行傳進來的這個 action，之後回傳出去，而這個 action 是一個 async function。
+  3. 另外在這個 action (async function) 中，會手動 dispatch(<ACTION>) *(dispatch=定義fn())* ，因此可以把 ACTION 傳到 reducer。
+2. 由於 async function 執行後會回傳一個 Promise，所以在 index.server.js 執行 loadData 這個函式後， **會得到 Promise**。
+3. async function 會在當裡面的 AJAX request（await function）都執行完後它自己的 Promise 才會被 resolved。
+  * 在 async function 中會等相對應的 reducers *(reducers=主管所有props)* 都已經執行完並得到資料。
+4. 使用 Promise.all() 可以等到所有的 loadData 內的 AJAX 請求都完成後（所有的 async function 都 resolver）才繼續執行其他行為。
+5. 最後，透過 Promise.all().then(<RENDER_APP>) 才開始渲染 App。
+```  
+其中一個是在後端執行；另一個則是會丟到瀏覽器去執行
+兩支 webpack 設定檔（webpack.server.js, webpack.client.js）
+會有不同的entry point(index.server.js, index.client.js）：
+```  
+
+```
+OAuth  開放授權之令牌
+允許用戶讓第三方應用存取該用戶在某一網站上儲存的私密的資源（如相片，影片，聯絡人列表），而無需將用戶名稱和密碼提供給第三方應用。
+```
+###  server-side 和 client-side Redux store 資料不同步
+##### 問題
+因為 Sever-side 也可以透過 API 取得資料時
+可能 伺服器端取得的資料，並沒有傳到瀏覽器端，(兩邊 Redux Store 內的資料狀態不一樣)
+##### 解決方式
+* server-side 的 Redux Store 傳到 client-side 的 Redux Store  
+createStore(reducer, [preloadedState], [enhancer]) 中的第二個參數，把初始化好的狀態傳到 client-side。
+##### 作用流程
+1. 伺服器端的透過 loadData() 取得資料，所有資料取得後，透過 renderer() 把資料存入 server 端的 <Provider /> 的 store 中。
+2. 準備開始於伺服器端渲染頁面。
+3. 將所有取得的資料透過 window.INITIAL_STATE 倒入頁面內。
+4. 伺服器端透過 render() 開始渲染 HTML 頁面，並傳送給瀏覽器。
+5. 把瀏覽器端要執行的 bundle.js 傳到瀏覽器。
+--把HTML 跟 bundle 傳給瀏覽器，換瀏覽器side 工作--
+6. 開始初始化瀏覽器端的 redux store。
+7. 透過先前從伺服器端倒入頁面的資料，開始初始化瀏覽器端的 redux store。
+8. ReactDOM.hydrate()。--依照JS重新渲染資料
+
+```
+由於先前在瀏覽器端的 React Component 內（react-ssr/src/client/pages/UserListPage.js）已經有透過 AJAX 取得資料（ this.props.fetchUsers()），因此若我們直接輸入該頁的網址時，會發現 AJAX 發動了兩次，一次是從伺服器端發送，另一次則是從瀏覽器端發送，但我們並不能直接把瀏覽器端的 AJAX 請求拿掉，因為當使用者透過 react-router 在瀏覽頁面時，並不會促發 server-side 重新請求資料，因為 server-side 只負責第一次的初始頁面，之後都是交由 React 處理，這時候使用者會因為沒有請求資料而得到空的頁面。
+```
+### SSR 時的資料夾結構 -
+components: 放可以重複使用的元件。
+pages：內放對應到的路由。
+
+### 錯誤訊息
+##### 當伺服器端產生的 HTML 和瀏覽器端產生的不同時：server side 缺少內容
+```
+Warning: Expected server HTML to contain a matching tag <div> in <div>.
+```
+##### 當伺服器端產生的 HTML 和瀏覽器端產生的不同時：server side 多出內容
+```
+Warning: Did not expect server HTML to contain a <li> in <ul>
+```
+##### 解決方式:把 server-side 取得 API 資料後的 store 和 client-side 的 store 同步。
+
+### 身分驗證問題
+因為前後端分離的關係（前端：renderer server；後端：API server)  
+後端的 API Server 去向 OAuth 的對象去請求資料（例如，Facebook, Google），    
+發給我們後端的 API Server 一組 Cookie，接著所有的 request 都必須帶有這組 Cookie，  
+但因為前後端分離的關係，後端的網域可能是叫做 api.ourapp.com，而前端的 Renderer Server 則是叫 ourapp.com，  
+這時候這個核發的 Cookie 就會碰到不同網域無法使用的問題。
+##### 解決方式: 前端的 Renderer Server 設定一個代理（Proxy)
+ App 進行身份驗證時，不是將使用者的瀏覽器直接傳送到後端的 API Server，
+ X 使用者          >            APT Server (backend)
+ O 使用者>Renderer API的Proxy(Proxy為Renderer Server一部分) > 傳驗證給API Server
+ 而是將該使用者傳送到在前端 Renderer API 上的代理（Proxy），這個代理接著進一步將驗證的請求轉送到 API Server 上。
+=> 取得OAuth 的驗證Cookie   
+API Server 傳cookie>  瀏覽器
+瀏覽器只和renderer server溝通，所以認為Cookie 是透過 Renderer Server 核發  
+最後瀏覽器向 renderer server 所發送的請求，都會帶有這個 Cookie；Renderer Server 在手動地將所有發送到 API Server 的請求添加上這組 Cookie。  
+
+![](https://i.imgur.com/g8WRzK9.png)
+
+### 初次存取頁面 Initial Page Load：由 Renderer Server 處理
+TBC
+
+
+---
+ref:
+* https://pjchender.github.io/2018/09/21/react-ssr-%E7%AD%86%E8%A8%98/

@@ -1,0 +1,16 @@
+{
+  "name": "MyKeywords",
+  "description": "build up your own keyword list.",
+  "manifest_version": 2,
+  "version": "0.0.0.1",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["background.js"],
+      "all_frames": true,
+      "run_at": "document_end"
+    }
+  ],
+  "permissions": ["storage", "notifications"],
+  "icons": { "128": "icon.png" }
+}
